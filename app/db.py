@@ -44,6 +44,12 @@ CREATE TABLE IF NOT EXISTS reminders (
     status TEXT NOT NULL DEFAULT 'pending'
 );
 CREATE INDEX IF NOT EXISTS idx_reminders_status_due ON reminders(status, due_at);
+
+CREATE TABLE IF NOT EXISTS device_tokens (
+    token TEXT PRIMARY KEY,
+    device_id TEXT,
+    created_at TEXT NOT NULL
+);
 """
 
 

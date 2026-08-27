@@ -20,3 +20,6 @@ venv/
 
 # OS cruft
 .DS_Store
+service-account.json
+.firebaserc
+firebase.json

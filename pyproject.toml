@@ -9,6 +9,9 @@ dependencies = [
     "aiosqlite>=0.20",
     "openai>=1.50",
     "cryptography>=43",
+    "google-auth>=2.57.0",
+    "requests>=2.34.2",
+    "firebase-admin>=7.5.0",
 ]
 
 [project.optional-dependencies]
