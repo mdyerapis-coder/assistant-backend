@@ -15,6 +15,12 @@ import os
 ASSISTANT_BEARER_TOKEN = os.environ["ASSISTANT_BEARER_TOKEN"]
 
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+# Deliberately configurable, not hardcoded to api.openai.com — the OpenAI SDK
+# accepts any OpenAI-Chat-Completions-compatible base_url. Currently pointed
+# at Cline's own gateway (api.cline.bot), which fronts Anthropic/OpenAI/Google/
+# etc. behind one key with namespaced model ids (e.g. "anthropic/claude-...").
+# Leave unset to fall back to the SDK's own default (api.openai.com).
+OPENAI_BASE_URL = os.environ.get("OPENAI_BASE_URL", "") or None
 GOOGLE_CLIENT_SECRET_JSON = os.environ.get("GOOGLE_CLIENT_SECRET_JSON", "")
 
 DB_PATH = os.environ.get("ASSISTANT_DB_PATH", "assistant.db")
