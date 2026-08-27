@@ -30,7 +30,10 @@ Verified from the laptop over the public internet (genuinely different network t
 ## Not done yet (tracked, not forgotten)
 
 - GLM's API key wasn't in the fields/password/notes locations checked — not pulled in, low priority.
-- `GOOGLE_CLIENT_SECRET_JSON` is still empty — the client_secret JSON on Mason's Omarchy device (Downloads folder) hasn't been pulled in yet; deliberately out of scope for the Bitwarden sync (not one of the 9 credentials it manages), needed before Phase 03 (Google OAuth).
+## Update 2026-08-27: Google client_secret pulled in
+
+- Two client_secret JSONs were on the Omarchy device in `~/Downloads`. Used the "web" application type one (`client_id` ending `b7r3qahevqv9g1ffq5pop98ao3o22ut8`, GCP project `api-intergrations-501314` / number `182773386348`) — the other was an "installed" (desktop) type client, wrong shape for a confidential-client backend flow. Minified and written into `GOOGLE_CLIENT_SECRET_JSON` in `assistant.env` on the VPS directly (not via Bitwarden — this credential isn't in the sync's scope). `assistant.service` restarted clean, health check still 200.
+- **Flag for Phase 03:** as downloaded, this client's only registered redirect URI was `https://lifeforge.llmclouds.au/auth` (a different app on the same GCP project) — `https://assistant.llmclouds.au/oauth/google/callback` needs to be added as an authorized redirect URI in the GCP console before the OAuth flow will actually work. The downloaded JSON may be a stale snapshot if this was already added since — worth a quick console check when Phase 03 starts rather than assuming either way.
 
 ## Update 2026-08-27: Bitwarden auto-sync closed out
 
