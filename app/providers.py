@@ -68,7 +68,8 @@ PROVIDERS: list[ModelProvider] = [
     ),
     ModelProvider(
         name="minimax",
-        base_url="https://api.minimax.chat/v1",  # TODO verify exact path before Phase 1 wiring
+        base_url="https://api.minimax.io/v1",  # verified live 2026-08-27 (the
+        # earlier api.minimax.chat guess was wrong — 401 invalid api key)
         api_key_env="MINIMAX_API_KEY",
         default_model="MiniMax-M3",
         note="Current general-purpose flagship, multimodal.",

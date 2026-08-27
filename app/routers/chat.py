@@ -114,6 +114,7 @@ async def _run_turn(conversation_id: str) -> AsyncIterator[str]:
             messages=messages,
             tools=tool_defs,
             stream=True,
+            extra_body=openai_client.EXTRA_BODY,
         )
 
         content_parts: list[str] = []
