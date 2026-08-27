@@ -1,0 +1,22 @@
+# Secrets — never commit these
+assistant.env
+.bw-sync.env
+*.env
+!.env.example
+
+# Runtime data
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# OS cruft
+.DS_Store
