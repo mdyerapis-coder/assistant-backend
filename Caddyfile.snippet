@@ -1,0 +1,8 @@
+# Appended to the VPS's /etc/caddy/Caddyfile on 2026-08-27, alongside the
+# pre-existing tinyhumans.llmclouds.au block (unrelated, different project).
+# Needs a DNS A record (assistant.llmclouds.au -> 103.108.228.3) before Caddy
+# can obtain a cert — added manually via the registrar, not automatable from here.
+
+assistant.llmclouds.au {
+	reverse_proxy localhost:8090
+}
