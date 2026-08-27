@@ -29,5 +29,13 @@ Verified from the laptop over the public internet (genuinely different network t
 
 ## Not done yet (tracked, not forgotten)
 
-- Bitwarden auto-sync timer not enabled (needs Mason's one-time setup).
 - GLM's API key wasn't in the fields/password/notes locations checked — not pulled in, low priority.
+- `GOOGLE_CLIENT_SECRET_JSON` is still empty — the client_secret JSON on Mason's Omarchy device (Downloads folder) hasn't been pulled in yet; deliberately out of scope for the Bitwarden sync (not one of the 9 credentials it manages), needed before Phase 03 (Google OAuth).
+
+## Update 2026-08-27: Bitwarden auto-sync closed out
+
+- `scripts/sync_secrets_from_bitwarden.sh` rewritten to delegate per-item extraction to `scripts/sync_secrets_from_bitwarden.py`, driven by `scripts/bitwarden_items.py` (item-id map) and `app/providers.py` (base_urls) — no more duplicated/hardcoded values, now syncs all 8 model-provider keys instead of 2.
+- Vault master password moved out of any plaintext env file: `assistant-secrets-sync.service` now uses `LoadCredentialEncrypted=BW_MASTER_PASSWORD:/root/.bw-master-password.cred` (systemd-creds), decrypted by systemd into a private, run-scoped `$CREDENTIALS_DIRECTORY` — Mason encrypted the password himself via `echo -n '...' | systemd-creds encrypt --name=BW_MASTER_PASSWORD - /root/.bw-master-password.cred` (the `--name=` matching the `LoadCredentialEncrypted=` id was the fix for an initial "Embedded credential name does not match filename, refusing" failure).
+- Verified live: `assistant-secrets-sync.service` exits 0/SUCCESS, all 9 credential env vars (bearer token, Cline key, 8 providers) populated with real non-empty values, `assistant.service` auto-restarted, public health check still returns 200 post-restart.
+- `assistant-secrets-sync.timer` enabled and active, 20-minute interval.
+- Phase 00 is now fully closed — every item in its original `CONTEXT.md` is done and verified.
