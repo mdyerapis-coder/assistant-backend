@@ -10,39 +10,18 @@ Bitwarden web vault → Account Settings → Security → Keys → **View API Ke
 
 ```
 ! ssh assistant-vps
-bw login --apikey
-# prompts for client_id / client_secret interactively
+bw login --apikey   # prompts for client_id / client_secret interactively
 ```
 
-## 3. Create Bitwarden items for the secrets
+(Already done for `dyer.mason1994@gmail.com` as of 2026-08-27 — skip unless re-logging in.)
 
-In your vault, create a login-type item per secret (name doesn't matter, e.g. "assistant-openai-key"), with the actual key value in the **password** field. Do this for:
-- OpenAI API key
-- Google client secret (the JSON content, or just the secret value — your call)
+## 3. Write `~/.bw-sync.env` on the VPS
 
-## 4. Find each item's ID and write `~/.bw-sync.env` on the VPS
-
-Still in your SSH session on the VPS:
-
-```
-bw unlock   # prompts for master password interactively
-bw list items --search "assistant-openai-key" --session <the session key it printed>
-# note the "id" field
-```
-
-Then create `~/.bw-sync.env` (root's home, i.e. `/root/.bw-sync.env`) with:
+Still in your SSH session on the VPS, create `/root/.bw-sync.env`:
 
 ```
 BW_CLIENTID=<from step 1>
 BW_CLIENTSECRET=<from step 1>
-BW_MASTER_PASSWORD=<your vault master password>
-```
-
-and export the two item IDs into the environment the sync script reads — easiest is to add them to the same file:
-
-```
-OPENAI_ITEM_ID=<id from bw list items>
-GOOGLE_CLIENT_SECRET_ITEM_ID=<id from bw list items>
 ```
 
 Then:
@@ -50,13 +29,32 @@ Then:
 chmod 600 ~/.bw-sync.env
 ```
 
-**This file is now the single most sensitive thing on the box — it contains your Bitwarden master password.** Treat it accordingly.
+This file holds the API key pair only — alone it can log the CLI in but can't decrypt anything without also unlocking the vault. The master password itself never goes in here (see step 4).
 
-## 5. Test it once, then enable the timer
+## 4. Encrypt your master password as a systemd credential
+
+**Run this yourself on the VPS — the plaintext password should never be pasted into this chat.**
 
 ```
-sudo bash /opt/assistant-backend/scripts/sync_secrets_from_bitwarden.sh
-cat /opt/assistant-backend/assistant.env   # confirm OPENAI_API_KEY got filled in
+! ssh assistant-vps
+echo -n 'your actual master password' | systemd-creds encrypt - /root/.bw-master-password.cred
+chmod 600 /root/.bw-master-password.cred
+```
+
+`systemd-creds` encrypts it with a key derived from the machine's TPM (or a host-local key if no TPM) — the resulting file is only decryptable on this specific VPS, and only by root, and only for the duration of a unit run (`assistant-secrets-sync.service` already has `LoadCredentialEncrypted=BW_MASTER_PASSWORD:/root/.bw-master-password.cred` wired in). It's never written to disk as plaintext anywhere, including during this step (the `echo -n | systemd-creds encrypt -` pipe keeps it out of shell history too).
+
+## 5. Confirm every credential has an item in your vault
+
+`scripts/bitwarden_items.py` is the source of truth for which env vars sync — currently 8 model-provider keys (Gemini, Mistral, GROQ, DeepSeek, OpenRouter, MiniMax, MiMo, OpenCode Zen), already pointed at existing items in your "API Keys" folder. The Cline gateway key (`OPENAI_API_KEY`) and the Google client secret aren't in Bitwarden yet, so the sync script leaves both untouched on every run — no action needed unless you want those to auto-rotate too, in which case: create a Bitwarden item, add its id to `bitwarden_items.py`.
+
+## 6. Test it once, then enable the timer
+
+```
+! ssh assistant-vps
+sudo systemd-run --pipe --wait --collect \
+  -p LoadCredentialEncrypted=BW_MASTER_PASSWORD:/root/.bw-master-password.cred \
+  /usr/bin/bash /opt/assistant-backend/scripts/sync_secrets_from_bitwarden.sh
+cat /opt/assistant-backend/assistant.env   # confirm the provider keys got filled in
 systemctl enable --now assistant-secrets-sync.timer
 ```
 
