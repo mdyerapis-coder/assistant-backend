@@ -1,0 +1,58 @@
+"""SQLite schema + connection management, plain SQL (no ORM at this size).
+
+One shared aiosqlite connection, opened at app startup (see main.py's
+lifespan) and closed at shutdown. WAL mode so a slow read (e.g. tier-2
+memory search) doesn't block a concurrent write.
+"""
+
+import aiosqlite
+
+from . import config
+
+_connection: aiosqlite.Connection | None = None
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS conversations (
+    id TEXT PRIMARY KEY,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    conversation_id TEXT NOT NULL REFERENCES conversations(id),
+    role TEXT NOT NULL,
+    content TEXT,
+    tool_calls_json TEXT,
+    tool_call_id TEXT,
+    name TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id);
+
+CREATE TABLE IF NOT EXISTS user_facts (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+"""
+
+
+async def connect() -> aiosqlite.Connection:
+    global _connection
+    _connection = await aiosqlite.connect(config.DB_PATH)
+    await _connection.execute("PRAGMA journal_mode=WAL")
+    await _connection.executescript(SCHEMA)
+    await _connection.commit()
+    return _connection
+
+
+async def disconnect() -> None:
+    global _connection
+    if _connection is not None:
+        await _connection.close()
+        _connection = None
+
+
+def get_connection() -> aiosqlite.Connection:
+    assert _connection is not None, "db not connected — call db.connect() at startup"
+    return _connection

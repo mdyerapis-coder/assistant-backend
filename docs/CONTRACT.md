@@ -16,15 +16,15 @@ Omit `conversation_id` to start a new conversation; the first event of the respo
 
 ## Event shapes
 
-Each `data:` line is a JSON object with a `type` field. Six types exist; **anything else must decode to an `unknown` event, never throw** — a forward-compatible client is more valuable than a strict one (this is deliberate, borrowed from a proven pattern — see `docs/adr/009-tool-registry-and-progressive-disclosure.md`'s sibling reasoning on tolerant parsing).
+Each `data:` line is a JSON object with a `type` field, and **every event — not just `message_completed` — also carries `conversation_id`**, which is how a client learns the assigned id when it started the request without one. Six types exist; **anything else must decode to an `unknown` event, never throw** — a forward-compatible client is more valuable than a strict one (this is deliberate, borrowed from a proven pattern — see `docs/adr/009-tool-registry-and-progressive-disclosure.md`'s sibling reasoning on tolerant parsing). Treat any field not listed below the same way: ignore it rather than rejecting the event.
 
-| `type` | Fields | Meaning |
+| `type` | Fields (besides `conversation_id`) | Meaning |
 |---|---|---|
 | `delta` | `content: string` | Append this text to the current assistant message |
 | `tool_call_started` | `id, name, args_json` | The model is calling a tool; render as a pending chip |
 | `tool_call_progress` | `id, note?` | Optional intermediate status for a long-running tool |
 | `tool_call_finished` | `id, ok: bool, summary?` | Tool call resolved; chip flips to done/failed |
-| `message_completed` | `conversation_id, message_id` | The assistant's turn is fully done |
+| `message_completed` | `message_id` | The assistant's turn is fully done |
 | `error` | `message, retryable: bool` | Something failed mid-stream |
 
 ## Ordering guarantees
