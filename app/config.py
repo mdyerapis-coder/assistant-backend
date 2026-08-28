@@ -12,6 +12,7 @@ that refuses to start. See docs/adr/002-errors-carry-intent.md.
 
 import json
 import os
+from pathlib import Path
 
 ASSISTANT_BEARER_TOKEN = os.environ["ASSISTANT_BEARER_TOKEN"]
 
@@ -28,24 +29,35 @@ DB_PATH = os.environ.get("ASSISTANT_DB_PATH", "assistant.db")
 
 # --- Phase 03: Google OAuth (Calendar + Gmail) ---
 
-# The public URL the phone reaches the backend at. Used to build the OAuth
-# redirect URI. Falls back to localhost for local dev (where the phone
-# isn't involved).
-PUBLIC_BASE_URL = os.environ.get("ASSISTANT_PUBLIC_URL", "http://localhost:8000")
+# The public URL the phone reaches the backend at. Defaults to the
+# production URL so the OAuth redirect_uri works out of the box. A
+# Bitwarden sync that doesn't carry ASSISTANT_PUBLIC_URL won't break the
+# OAuth flow. Override via env var for local dev.
+PUBLIC_BASE_URL = os.environ.get("ASSISTANT_PUBLIC_URL", "https://assistant.llmclouds.au")
 GOOGLE_OAUTH_REDIRECT_URI = os.environ.get(
     "GOOGLE_OAUTH_REDIRECT_URI",
     f"{PUBLIC_BASE_URL}/oauth/google/callback",
 )
 
-# Fernet key for encrypting OAuth tokens at rest in SQLite. See
-# docs/adr/003-encrypt-tokens-at-rest.md. Must be a 32-byte url-safe
-# base64-encoded key. Generate one with:
-#   python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-
 
 def get_google_token_encryption_key() -> str:
-    """Lazily read the encryption key so tests can set it before first use."""
-    return os.environ.get("GOOGLE_TOKEN_ENCRYPTION_KEY", "")
+    """Read the Fernet key for OAuth token encryption at rest.
+
+    Order of precedence:
+    1. GOOGLE_TOKEN_ENCRYPTION_KEY env var (fast, but Bitwarden sync may strip)
+    2. /opt/assistant-backend/.google-token-key (file on the VPS that the
+       sync script doesn't touch — survives Bitwarden rewrites)
+
+    Without one of these, OAuth tokens can't be stored. Generate with:
+        python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    """
+    env_key = os.environ.get("GOOGLE_TOKEN_ENCRYPTION_KEY", "")
+    if env_key:
+        return env_key
+    key_file = Path("/opt/assistant-backend/.google-token-key")
+    if key_file.exists():
+        return key_file.read_text().strip()
+    return ""
 
 
 def get_google_oauth_client_config() -> dict:
