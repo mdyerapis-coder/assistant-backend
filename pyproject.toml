@@ -10,8 +10,10 @@ dependencies = [
     "openai>=1.50",
     "cryptography>=43",
     "google-auth>=2.57.0",
+    "google-auth-oauthlib>=1.2",
     "requests>=2.34.2",
     "firebase-admin>=7.5.0",
+    "aiohttp>=3.9",
 ]
 
 [project.optional-dependencies]

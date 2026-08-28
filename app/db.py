@@ -50,6 +50,22 @@ CREATE TABLE IF NOT EXISTS device_tokens (
     device_id TEXT,
     created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS google_oauth_tokens (
+    provider TEXT PRIMARY KEY,
+    access_token_enc BLOB NOT NULL,
+    refresh_token_enc BLOB NOT NULL,
+    expiry TEXT NOT NULL,
+    scope TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS oauth_states (
+    state TEXT PRIMARY KEY,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_oauth_states_expires ON oauth_states(expires_at);
 """
 
 

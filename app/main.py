@@ -12,7 +12,9 @@ from typing import AsyncIterator
 from fastapi import FastAPI
 
 from . import db, scheduler
-from .routers import chat, health, device_tokens
+from .routers import chat, device_tokens, health, oauth_google
+from .tools import calendar as calendar_tools  # noqa: F401  registers calendar tools
+from .tools import gmail as gmail_tools  # noqa: F401  registers gmail tools
 
 logger = logging.getLogger(__name__)
 
@@ -37,3 +39,4 @@ app = FastAPI(title="assistant-backend", lifespan=lifespan)
 app.include_router(health.router)
 app.include_router(chat.router)
 app.include_router(device_tokens.router)
+app.include_router(oauth_google.router)
