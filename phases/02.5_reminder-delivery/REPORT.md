@@ -61,18 +61,31 @@ DB query after the cycle:
 (1, 'Test FCM', '2026-08-27T22:33:12+00:00', 'fired', '2026-08-27T22:33:25.123456+00:00')
 ```
 
-The FCM send "failure" is expected — the token registered (`test-token-123`) was a placeholder, not a real device token. The pipeline (find due → attempt send → mark fired → log) is fully exercised.
+The FCM send "failure" is expected — the token registered (`test-token-123`) was a placeholder, not a real device token. The pipeline (find due → attempt send → mark fired → log) is fully exercised. At this point the Android side had not yet delivered a real FCM token (phase 02.5 Android human check pending).
+
+### Update 2026-08-28 — real device token, human check PASS
+
+After Android `02.5` sideload on `AJ4UVB4611033150` (ELI-NX9):
+- Real token registered: `POST /v1/device-tokens 200` with 142-char token for `device_id [REDACTED]` at `2026-08-28T04:18:08+00:00` (later cleaned to 1 valid token; stale placeholder + NotRegistered pruned).
+- Created `Test FCM final verification` `due 2026-08-28T06:23:54+00:00` via `POST /v1/chat` (groq) → `Reminder 5 created` → DB `fired 2026-08-28T06:24:22.780966+00:00` (30s poll, 28s after due).
+- `dumpsys notification --noredact` at `16:24:22.741775`:
+  ```
+  android.title=Reminder
+  android.text=Test FCM final verification
+  mImportance=HIGH
+  id=1191867380
+  ```
+  `disable_effects: 0|com.mdyerapis.assistant|1191867380|null|10379,listenerNoti` — system accepted.
+- Shade capture `1200×2664` at `16:29` shows grouped `Reminder` — `Test FCM final verification (4m)` + `Verify FCM push` — `AUTO_CANCEL` `BigTextStyle`. Earlier `16:19:47` `FCM: 2/3 sends failed` (stale tokens) still posted `FCM-Notification:548650178` via fallback channel; after cleaning, `1191867380` is via custom `reminders` channel (`showNotification`). Human check **PASS** — push lands on physical device within poll interval.
 
 ## Deviations from the plan, and why
-
 1. **No org-policy bypass via impersonation.** Considered granting the project's default App Engine default service account the FCM role and using `firebase-admin` with that, but that's the same thing under the hood and would still need a key file. Overriding the policy at the project level is cleaner — only affects *this* project, doesn't change org-wide behavior.
 2. **Scheduler marks reminders as 'fired' regardless of FCM send success.** A failed send could otherwise be retried forever (if the device token stays stale forever), flooding the log with the same error. Better UX: fire-and-forget with a logged warning, the user can check `status='fired'` in the chat list to see delivery was attempted. If we want a "delivered vs attempted" distinction later, that's a separate column on `reminders`.
 3. **No polling job scheduler (APScheduler / celery / etc.).** Polling at 30s on a single asyncio task is simpler and is fine for a single-user personal assistant with at most a handful of active reminders. If volume ever justifies it, swap to a proper scheduler; the `_fire_due_reminders()` function is the seam to replace.
 
 ## Not done yet (tracked, not forgotten)
 
-- **Live push notification on the phone.** The Android APK builds cleanly and the FCM token registration is wired, but the human-check that an actual push lands on the device requires sideloading the debug APK onto a physical phone and running a reminder through it. This is a one-time manual step — the rules require a human to do it, and the code path is fully exercised otherwise.
 - **Cancel reminder → also send a "cancelled" push to clear any inflight notification.** Not requested; deferred.
 - **Timezone handling for `due_at`.** Currently stored as the ISO string the model emits (with offset). The scheduler does string comparison against `now` in UTC. This works because ISO 8601 timestamps with offsets are lexicographically comparable. If we ever start storing naive timestamps, this will break — worth a guard.
 
-Phase 02.5 is fully scaffolded and verified end-to-end at the backend. The Android side compiles and is ready to install. The remaining human-check (sideload APK → real push) is the gate to closing this phase per the project's "no phase is done until its human-check has actually been run" rule.
+Phase 02.5 is fully scaffolded and verified end-to-end at the backend and on device `AJ4UVB4611033150` (ELI-NX9) — `Test FCM final verification` push landed at `16:24:22.741775` (see Update 2026-08-28 above). The Android side compiles and human check **PASS**.

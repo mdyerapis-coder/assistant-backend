@@ -66,6 +66,30 @@ CREATE TABLE IF NOT EXISTS oauth_states (
     expires_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_oauth_states_expires ON oauth_states(expires_at);
+
+CREATE TABLE IF NOT EXISTS skill_usage (
+    name TEXT PRIMARY KEY,
+    activations INTEGER DEFAULT 0,
+    last_used_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS action_patterns (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    args_template TEXT NOT NULL,
+    count INTEGER DEFAULT 1,
+    first_at TEXT,
+    last_at TEXT,
+    nudge_count INTEGER DEFAULT 0,
+    UNIQUE(name, args_template)
+);
+
+CREATE TABLE IF NOT EXISTS plugins (
+    name TEXT PRIMARY KEY,
+    version TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    installed_at TEXT NOT NULL
+);
 """
 
 

@@ -1,0 +1,9 @@
+{
+  "servers": [
+    {
+      "name": "demo",
+      "transport": "stdio",
+      "command": ["python3", "scripts/mcp_demo_server.py"]
+    }
+  ]
+}

@@ -9,10 +9,40 @@
 ## Request body
 
 ```json
-{ "conversation_id": "optional-string", "message": "the user's turn" }
+{
+  "conversation_id": "optional-string",
+  "message": "the user's turn",
+  "model": "optional-provider-id"
+}
 ```
 
 Omit `conversation_id` to start a new conversation; the first event of the response includes the assigned id.
+Omit `model` to use the backend default. Clients must source model ids from
+the bearer-authenticated `GET /v1/models` endpoint rather than inventing or
+persisting raw provider URLs.
+
+## Model catalog
+
+`GET /v1/models` returns only configured providers whose endpoint and model id
+have been verified for chat:
+
+```json
+{
+  "default_model_id": "minimax",
+  "models": [
+    {
+      "id": "minimax",
+      "model": "MiniMax-M3",
+      "provider": "minimax",
+      "description": "Current general-purpose flagship, multimodal."
+    }
+  ]
+}
+```
+
+`default_model_id` is `null` and `models` is empty when no selectable provider
+is configured. Passing an unknown, unconfigured, or unverified `model` to
+`POST /v1/chat` returns HTTP 422 before the user message is persisted.
 
 ## Event shapes
 
