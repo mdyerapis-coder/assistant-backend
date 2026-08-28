@@ -13,10 +13,13 @@ Endpoints:
 """
 
 import datetime
+import json
 import logging
 import secrets
 from typing import Annotated
+from urllib.parse import urlencode
 
+import aiohttp
 from cryptography.fernet import Fernet, InvalidToken
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
@@ -102,6 +105,39 @@ async def _consume_state(state: str) -> bool:
     return True
 
 
+async def _exchange_code_for_tokens(
+    code: str,
+    client_config: dict,
+) -> dict:
+    """Exchange an OAuth auth code for tokens via direct HTTP POST.
+
+    google-auth's Credentials class doesn't have a .fetch(code=...) method
+    (it has .refresh() for refreshing existing tokens, not initial
+    exchange). The standard pattern is to POST to the token endpoint
+    directly with the code and exchange parameters.
+    """
+    payload = {
+        "code": code,
+        "client_id": client_config["client_id"],
+        "client_secret": client_config["client_secret"],
+        "redirect_uri": config.GOOGLE_OAUTH_REDIRECT_URI,
+        "grant_type": "authorization_code",
+    }
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            client_config["token_uri"],
+            data=payload,
+            headers={"Accept": "application/json"},
+        ) as resp:
+            body = await resp.text()
+            if resp.status != 200:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Google token endpoint returned {resp.status}: {body[:300]}",
+                )
+            return json.loads(body)
+
+
 @router.get("/oauth/google/start")
 async def oauth_google_start() -> RedirectResponse:
     """Redirect to Google's OAuth consent screen with a CSRF state token."""
@@ -125,7 +161,6 @@ async def oauth_google_start() -> RedirectResponse:
         "prompt": "consent",
         "include_granted_scopes": "true",
     }
-    from urllib.parse import urlencode
     auth_url = f"{client_config['auth_uri']}?{urlencode(params)}"
     return RedirectResponse(auth_url)
 
@@ -143,28 +178,25 @@ async def oauth_google_callback(
     if not client_config:
         raise HTTPException(status_code=503, detail="Google OAuth not configured.")
 
-    creds = Credentials(
-        token=None,
-        refresh_token=None,
-        id_token=None,
-        token_uri=client_config["token_uri"],
-        client_id=client_config["client_id"],
-        client_secret=client_config["client_secret"],
-        scopes=GOOGLE_SCOPES,
-    )
-    creds.fetch(code=code, request=GoogleRequest())
+    token_response = await _exchange_code_for_tokens(code, client_config)
+    access_token = token_response.get("access_token")
+    refresh_token = token_response.get("refresh_token")
+    expires_in = token_response.get("expires_in", 3600)
+    scope = token_response.get("scope", " ".join(GOOGLE_SCOPES))
 
-    if not creds.refresh_token:
+    if not access_token or not refresh_token:
         raise HTTPException(
             status_code=400,
-            detail="No refresh_token returned. Re-consent with prompt=consent, "
-                   "or remove the existing grant in your Google account settings.",
+            detail=f"No tokens in Google response: {json.dumps(token_response)[:300]}",
         )
 
-    access_token_enc = _encrypt(creds.token)
-    refresh_token_enc = _encrypt(creds.refresh_token)
-    expiry = creds.expiry.isoformat() if creds.expiry else _now_iso()
-    scope = " ".join(creds.scopes or GOOGLE_SCOPES)
+    expiry = (
+        datetime.datetime.now(datetime.timezone.utc)
+        + datetime.timedelta(seconds=expires_in)
+    ).isoformat()
+
+    access_token_enc = _encrypt(access_token)
+    refresh_token_enc = _encrypt(refresh_token)
 
     conn = db.get_connection()
     await conn.execute(
@@ -210,7 +242,12 @@ async def oauth_google_disconnect() -> dict:
 
 
 async def get_google_credentials() -> Credentials | None:
-    """Load and refresh the stored Google credentials. Returns None if not connected."""
+    """Load the stored Google credentials and return them.
+
+    Returns a google.oauth2.credentials.Credentials with the access token
+    (refreshed if expired) ready for use with google-api-python-client or
+    direct HTTP calls. Returns None if not connected or if refresh fails.
+    """
     conn = db.get_connection()
     async with conn.execute(
         "SELECT access_token_enc, refresh_token_enc, expiry, scope FROM google_oauth_tokens WHERE provider = ?",
@@ -224,16 +261,23 @@ async def get_google_credentials() -> Credentials | None:
     if not client_config:
         return None
 
+    access_token = _decrypt(row[0])
+    refresh_token = _decrypt(row[1])
+    expiry_dt = datetime.datetime.fromisoformat(row[2])
+    scope = row[3]
+    now = datetime.datetime.now(datetime.timezone.utc)
+
     creds = Credentials(
-        token=_decrypt(row[0]),
-        refresh_token=_decrypt(row[1]),
+        token=access_token,
+        refresh_token=refresh_token,
         token_uri=client_config["token_uri"],
         client_id=client_config["client_id"],
         client_secret=client_config["client_secret"],
-        scopes=row[3].split(),
+        scopes=scope.split(),
     )
 
-    if creds.expired or (creds.expiry and creds.expiry <= datetime.datetime.now(datetime.timezone.utc)):
+    # Refresh if expired or about to expire (within 60 seconds).
+    if expiry_dt <= now + datetime.timedelta(seconds=60):
         try:
             creds.refresh(GoogleRequest())
         except Exception:
