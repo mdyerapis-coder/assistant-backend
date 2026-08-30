@@ -1,0 +1,11 @@
+[Unit]
+Description=SQLite off-box backup for assistant-backend
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+EnvironmentFile=-/opt/assistant-backend/assistant.env
+EnvironmentFile=-/etc/default/assistant-backup
+ExecStart=/usr/bin/bash /opt/assistant-backend/scripts/backup_db.sh
