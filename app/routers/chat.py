@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from .. import db, memory, openai_client
+from .. import db, extraction, memory, openai_client
 from ..auth import require_bearer_token
 from ..sse import DONE, encode_event
 from ..tools import memory_tools  # noqa: F401  ensures tools are registered
@@ -32,6 +32,9 @@ SYSTEM_PROMPT_BASE = (
 class ChatRequest(BaseModel):
     conversation_id: str | None = None
     message: str
+    # Optional provider id from GET /v1/models; unknown/missing falls
+    # back to the active provider (see openai_client.resolve).
+    model: str | None = None
 
 
 def _now() -> str:
@@ -100,21 +103,22 @@ async def _save_message(
     await conn.commit()
 
 
-async def _run_turn(conversation_id: str) -> AsyncIterator[str]:
+async def _run_turn(conversation_id: str, model_id: str | None) -> AsyncIterator[str]:
     facts = await memory.get_all_facts()
     system_prompt = SYSTEM_PROMPT_BASE + memory.render_facts_block(facts)
     history = await _load_history(conversation_id)
     messages: list[dict] = [{"role": "system", "content": system_prompt}] + history
 
     tool_defs = registry.openai_tool_defs(registry.always_visible_tools())
+    model_client, model_name, model_extra = openai_client.resolve(model_id)
 
     while True:
-        stream = await openai_client.client.chat.completions.create(
-            model=openai_client.DEFAULT_MODEL,
+        stream = await model_client.chat.completions.create(
+            model=model_name,
             messages=messages,
             tools=tool_defs,
             stream=True,
-            extra_body=openai_client.EXTRA_BODY,
+            extra_body=model_extra,
         )
 
         content_parts: list[str] = []
@@ -235,7 +239,7 @@ async def chat(request: ChatRequest) -> StreamingResponse:
 
     async def event_stream() -> AsyncIterator[str]:
         try:
-            async for frame in _run_turn(conversation_id):
+            async for frame in _run_turn(conversation_id, request.model):
                 yield frame
         except Exception as exc:
             yield encode_event(
@@ -247,5 +251,10 @@ async def chat(request: ChatRequest) -> StreamingResponse:
                 }
             )
             yield DONE
+            return
+        # Turn completed cleanly — opportunistically extract durable facts
+        # from this exchange in the background (phase 05). Never blocks the
+        # stream; failures are logged inside the task, never surfaced.
+        extraction.schedule(conversation_id)
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

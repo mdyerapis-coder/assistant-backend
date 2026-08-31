@@ -12,7 +12,7 @@ from typing import AsyncIterator
 from fastapi import FastAPI
 
 from . import db, scheduler
-from .routers import chat, device_tokens, health, oauth_google
+from .routers import chat, device_tokens, health, memory, models, oauth_google, threads
 from .tools import calendar as calendar_tools  # noqa: F401  registers calendar tools
 from .tools import gmail as gmail_tools  # noqa: F401  registers gmail tools
 
@@ -40,3 +40,6 @@ app.include_router(health.router)
 app.include_router(chat.router)
 app.include_router(device_tokens.router)
 app.include_router(oauth_google.router)
+app.include_router(models.router)
+app.include_router(threads.router)
+app.include_router(memory.router)

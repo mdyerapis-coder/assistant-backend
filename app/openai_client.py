@@ -43,5 +43,30 @@ else:
     _api_key = "unset"
     _base_url = None
     EXTRA_BODY = {}
-
 client = AsyncOpenAI(api_key=_api_key, base_url=_base_url)
+
+
+# Public mirror of _ACTIVE_PROVIDER_NAME for /v1/models (the id the app
+# sends back as the chat request's `model` field when nothing is selected).
+ACTIVE_PROVIDER_NAME = _ACTIVE_PROVIDER_NAME
+
+_clients_by_provider: dict[str, AsyncOpenAI] = {}
+
+
+def resolve(model_id: str | None) -> tuple[AsyncOpenAI, str, dict]:
+    """Map the chat request's optional `model` id (a provider name from
+    /v1/models) to a client + model + extra_body. Unknown or missing ids
+    fall back to the active provider — never an error path, the phone's
+    saved selection shouldn't hard-fail a chat because a provider key was
+    rotated out (phase 05 contract repair)."""
+    provider = providers.get_provider(model_id) if model_id else None
+    if provider is None:
+        return client, DEFAULT_MODEL, EXTRA_BODY
+    resolved = _clients_by_provider.setdefault(
+        provider.name,
+        AsyncOpenAI(
+            api_key=os.environ[provider.api_key_env], base_url=provider.base_url
+        ),
+    )
+    extra = {"thinking": {"type": "disabled"}} if provider.name == "minimax" else {}
+    return resolved, provider.default_model, extra

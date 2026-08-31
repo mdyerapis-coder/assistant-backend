@@ -33,6 +33,16 @@ async def get_all_facts() -> dict[str, str]:
     return {key: value for key, value in rows}
 
 
+async def list_facts() -> list[dict]:
+    """All facts with timestamps, for GET /v1/memory (phase 05)."""
+    conn = db.get_connection()
+    async with conn.execute(
+        "SELECT key, value, updated_at FROM user_facts ORDER BY key"
+    ) as cursor:
+        rows = await cursor.fetchall()
+    return [{"key": k, "value": v, "updated_at": t} for k, v, t in rows]
+
+
 def render_facts_block(facts: dict[str, str]) -> str:
     if not facts:
         return ""
