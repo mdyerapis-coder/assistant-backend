@@ -89,6 +89,33 @@ Only rows a chat UI renders: `user`/`assistant` roles with non-empty `content`, 
 ```
 
 PATCH response: `{"facts": [...same shape as GET...], "rejected": [{"key": "...", "reason": "..."}]}`. A write that would exceed the memory cap lands in `rejected` (with a reason) instead of being stored — the rest of the patch still applies. The model's `remember`/`forget` tools and the post-turn auto-extractor (phase 05) write through the same store these endpoints read.
+## SMS relay (phase 06)
+
+The backend has no SMS gateway — `send_sms`/`read_sms` tool calls are relayed
+through the connected Android phone. The backend pushes an FCM data message to
+the registered device token:
+
+```
+data: { "action": "send_sms", "request_id": "<uuid>", "phone": "+614...", "message": "..." }
+data: { "action": "read_sms",  "request_id": "<uuid>", "phone": "?", "limit": "10" }
+```
+
+The phone executes via the Android SMS APIs and reports the outcome back to:
+
+```
+POST /v1/sms/results            (bearer-authed)
+{ "request_id": "<uuid>", "ok": true }
+{ "request_id": "<uuid>", "ok": false, "error": "reason" }
+{ "request_id": "<uuid>", "ok": true, "messages": [
+    { "from_number": "+614...", "message": "...", "received_at": "iso-8601" }
+] }
+```
+
+Response: `{"ok": true}`; 404 for an unknown `request_id`. A `read_sms` result
+with `messages` is stored and returned by the `get_sms_result` tool. The SMS
+tools are hidden behind `use_skill("sms")` (progressive disclosure, ADR-009) —
+they are NOT in the always-visible tool set, so the phone relay is not
+required for normal chat turns.
 
 ## Event shapes
 

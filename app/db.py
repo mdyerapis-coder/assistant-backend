@@ -90,6 +90,25 @@ CREATE TABLE IF NOT EXISTS plugins (
     enabled INTEGER NOT NULL DEFAULT 1,
     installed_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS sms_relay (
+    id TEXT PRIMARY KEY,
+    action TEXT NOT NULL,
+    phone TEXT,
+    message TEXT,
+    limit_count INTEGER,
+    status TEXT NOT NULL DEFAULT 'dispatched',
+    error TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS sms_relay_messages (
+    request_id TEXT NOT NULL REFERENCES sms_relay(id),
+    from_number TEXT NOT NULL,
+    message TEXT NOT NULL,
+    received_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sms_relay_status ON sms_relay(status);
 """
 
 
