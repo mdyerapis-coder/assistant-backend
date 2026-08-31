@@ -1,6 +1,6 @@
 # Phase 05 — conversation continuity plus memory depth
 
-**Status:** code complete + tested locally (`76 passed`, up from 45 at phase 04). Not yet deployed to the VPS and not yet device-verified — both are the companion Android phase's gate, not blockers for this one.
+**Status:** deployed to the VPS and live-verified (`77 passed` locally; all new endpoints 200 against https://assistant.llmclouds.au with real data, 2026-08-31). Remaining: on-phone verification, which is the companion Android phase's gate.
 
 ## What landed
 
@@ -18,17 +18,13 @@ Threads are keyed to the bearer token implicitly: this backend is single-token (
 - New `app/extraction.py` — after every cleanly completed chat turn, the router schedules a fire-and-forget background task (`extraction.schedule`) that sends the last user/assistant exchange (plus the already-known facts, so the model doesn't restate) to the active provider and asks for `{"facts": {key: value}}`. New/changed facts go through `memory.remember()`, which enforces the existing size cap — cap-rejected facts are logged and skipped, never crash the task. All failures (provider down, unparseable output, markdown-fenced JSON, prose-wrapped JSON) are handled and logged; extraction can never break or delay a chat stream. This lives in its own module rather than `app/memory.py` because memory.py is deliberately framework-free (its docstring's invariant) — extraction owns the model call, memory stays pure storage.
 - New `app/routers/memory.py` — `GET /v1/memory` (all facts with timestamps) and `PATCH /v1/memory` (`{"facts": {key: value|null}}`; null deletes, upserts go through `remember()` so the cap applies, rejections returned as `rejected: [{key, reason}]`). The human can now audit/correct everything the model remembered or auto-extracted without chatting.
 
-### 3. Contract repair discovered during this phase: `GET /v1/models`
+### 3. Merge discovery: the deployed VPS tree was ahead of git
 
-The Android app (phase 04) has called `GET /v1/models` and sent a `model` field on `/v1/chat` since its model picker landed — but no backend route existed; the picker 404'd live and the field was silently ignored (pydantic drops unknown fields). Fixed in the same phase because it's a contract break, not a new feature:
-
-- `app/routers/models.py` — `GET /v1/models` returning one entry per provider whose key is configured (`id` = provider name) plus `default_model_id`.
-- `app/openai_client.py` — `resolve(model_id)` maps the request's `model` to a cached per-provider `AsyncOpenAI` client; unknown/missing falls back to the active provider rather than erroring (a rotated-out key shouldn't hard-fail the phone's saved selection). `ACTIVE_PROVIDER_NAME` exposed for the catalog.
-- `app/routers/chat.py` — `ChatRequest.model` accepted and threaded into `_run_turn`.
+While preparing the deploy, `/opt/assistant-backend` turned out to carry a full phase's worth of running-but-uncommitted work: skills platform (`app/skills.py`, `skills/`, `skills_tools`), MCP client wiring (`mcp_client.py`, `mcp_servers.json`), action patterns (`patterns.py`), plugin loader (`plugins/`, `plugins.py`), `ModelRuntime` per-request provider selection with `GET /v1/models` and `ChatRequest.model` (422 on unknown id — not the silent fallback my first pass assumed), orjson SSE encoding, and new deps (orjson/pyyaml/mcp). Commit `5f9e63c` brings that tree into git wholesale and re-applies this phase's work on top of the VPS versions: threads/memory/extraction kept (the VPS had none of them), `chat.py` gains the extraction schedule, `main.py` mounts the two new routers, and the first-pass `/v1/models` router + `openai_client.resolve` from `9e5f66c` were **dropped in favor of the deployed `ModelRuntime` implementation** (same wire shape the Android app already targets, stricter 422 semantics) — one implementation, not two.
 
 ### 4. Contract
 
-`docs/CONTRACT.md` rewritten: Part 1 (SSE, unchanged shapes, explicit "no new frame types in phase 05 — sync is pull-based REST") + Part 2 (all REST endpoints above with exact shapes and the same tolerant-parsing rule). Re-copied by hand into `assistant-android/docs/CONTRACT.md` per the delegation-boundary rule — verify the header there when the companion lands.
+`docs/CONTRACT.md` = the VPS text (model catalog with 422 semantics) + new "Thread history" and "Memory inspection" sections, same tolerant-parsing rule, explicit "no new SSE frame types in phase 05". Re-copied by hand into `assistant-android/docs/CONTRACT.md` (2026-08-31) per the delegation-boundary rule.
 
 ## Deviations from the phase CONTEXT
 
@@ -37,12 +33,12 @@ The Android app (phase 04) has called `GET /v1/models` and sent a `model` field 
 
 ## Verification
 
-- Local: `.venv/bin/pytest -q` → **76 passed** (31 new: threads 7, memory API 6, extraction 11, models 6, +1 conftest-affecting chat behavior unchanged). New `tests/conftest.py` stubs the background extraction schedule for chat tests so no hidden task races TestClient teardown; extraction tests exercise the real functions directly.
-- Smoke (local uvicorn, throwaway token + tmp DB, 2026-08-31): `GET /v1/threads` → `{"threads":[]}`; `GET /v1/memory` → `{"facts":[]}`; `PATCH /v1/memory {"facts":{"timezone":"Australia/Sydney"}}` → stored and echoed with `updated_at`; `GET /v1/models` → `default_model_id: "minimax"` + the one locally-keyed provider (`opencode-zen`); unauthed `GET /v1/threads` → 401. NOTE: on this laptop only opencode-zen's key is set, so `default_model_id` (minimax) isn't in the local catalog — on the VPS the active provider's key is present, which is what makes it the active provider. Cosmetic dev-env quirk, documented here rather than papered over with fallback logic.
+- Local, merged tree: `.venv/bin/pytest -q` → **77 passed** (31 new tests: threads 7, memory API 6, extraction 11, models 7 — the latter rewritten against `ModelRuntime`/`selectable_providers`/422; plus `tests/conftest.py` stubbing the background extraction schedule so no hidden task races TestClient teardown).
+- Local uvicorn smoke (throwaway token + tmp DB, 2026-08-31): threads/memory GET/PATCH round-trip, 401 unauthed — all as documented.
+- **Live on the VPS (deployed 2026-08-31, service restarted, `health:200`)**: `GET /v1/threads` → real threads with derived titles ("Say hello" → "Hello! 👋 …" preview); `GET /v1/threads/{id}/messages` → real renderable history (integer ids, oldest-first); `GET /v1/memory` → real facts (e.g. `cat_name: Mochi`); PATCH set + null-delete round-trip verified and cleaned up; `GET /v1/models` → `default_model_id: minimax` + live catalog; public URL `https://assistant.llmclouds.au/v1/threads` → 200.
 
-## Not done yet (live checks; need the VPS + a phone)
+## Not done yet (phone-side checks; assistant-android phase 08)
 
-1. Deploy: git pull on the VPS + `systemctl --user restart assistant`, then `curl -H "Authorization: Bearer …" https://assistant.llmclouds.au/v1/threads` returns real threads.
-2. Auto-extraction live proof: tell the assistant "my dog is called Rover" → `GET /v1/memory` shows `dog_name`; `PATCH` it and confirm the next turn's behavior reflects the edit.
-3. Second device / reinstall with same token → thread list repopulates (this is assistant-android `phases/08`'s gate; its CONTEXT requires this phase landed + contract re-copied — done in the same session as this commit).
-4. Model picker live proof: `GET /v1/models` from the phone returns the catalog and a selected provider routes chats (watch service logs for the per-provider base_url).
+1. On-device: sessions screen lists server threads; tap resumes with server messages; fresh install + same token rehydrates.
+2. Auto-extraction live proof: tell the assistant "my dog is called Rover" via the phone → `GET /v1/memory` shows `dog_name` within a turn; `PATCH` edit reflects in the next turn.
+3. VPS git hygiene: the deploy dir is also root's home and carries home-dir noise (dotfiles, `Android/`, `Work/`, …). The repo-sync commit intentionally excludes all of that; a future cleanup should move the deployment to a dedicated non-home directory.
