@@ -109,6 +109,15 @@ CREATE TABLE IF NOT EXISTS sms_relay_messages (
     received_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_sms_relay_status ON sms_relay(status);
+CREATE TABLE IF NOT EXISTS automations (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    cron TEXT NOT NULL,
+    action TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_automations_enabled ON automations(enabled, cron);
 """
 
 

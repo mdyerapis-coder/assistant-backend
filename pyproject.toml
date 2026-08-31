@@ -17,6 +17,7 @@ dependencies = [
     "orjson>=3.12.0",
     "pyyaml>=6.0.3",
     "mcp>=2.1.1",
+    "croniter>=1.0",
 ]
 
 [project.optional-dependencies]

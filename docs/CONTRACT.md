@@ -139,3 +139,36 @@ Each `data:` line is a JSON object with a `type` field, and **every event — no
 ## What's NOT in this contract yet
 
 Tier-1 memory (`remember`/`forget`) and skill discovery (`list_skills`/`use_skill`) are tool calls like any other — they don't change this event shape, they just appear as `tool_call_started` events with those names. No separate wire format for them. Thread history sync is REST (see above), not SSE events — push-synced multi-device updates would be the trigger to add frame types.
+
+## Automations (phase 07)
+
+Natural-language cron automations. Users define recurring jobs using cron expressions.
+
+### `POST /v1/automations` — Create a new automation
+
+Request body:
+```json
+{
+  "name": "Human-readable name",
+  "cron": "Standard cron expression (e.g. "0 9 * * *" for 9am daily)",
+  "action": "The skill/tool to execute when the cron fires"
+}
+```
+
+Response: `{"id": "<automation-id>", "name": "...", "cron": "...", "action": "...", "enabled": true, "created_at": "iso-8601"}`
+
+### `GET /v1/automations` — List automations
+
+Optional query: `?enabled=true` (default) to show only enabled automations.
+
+Response: `[{ "id", "name", "cron", "action", "enabled", "created_at" }]`
+
+### `DELETE /v1/automations/{id}` — Delete an automation
+
+Response: `{"deleted": true}`
+
+Automations are hidden behind `use_skill("automations")` (progressive disclosure, ADR-009) — they do not appear in the default tool-schema payload.
+
+### Scheduler firing
+
+The background scheduler (app/scheduler.py) polls every 30s for due automations using `croniter`. When due, it executes the automation's action (via the tool registry) and FCM-pushes the result to all registered device tokens. After firing, the automation is disabled to avoid repeated triggers.

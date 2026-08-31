@@ -15,6 +15,7 @@ from fastapi import FastAPI
 from . import db, mcp_client, patterns, plugins, scheduler, skills
 from .routers import chat, device_tokens, health, memory, oauth_google, threads
 from .routers import sms as sms_router
+from .routers import device_control as device_control_router  # noqa: F401
 from .tools import calendar as calendar_tools  # noqa: F401  registers calendar tools
 from .tools import gmail as gmail_tools  # noqa: F401  registers gmail tools
 from .tools import sms as sms_tools  # noqa: F401  registers sms relay tools
@@ -57,3 +58,4 @@ app.include_router(oauth_google.router)
 app.include_router(threads.router)
 app.include_router(memory.router)
 app.include_router(sms_router.router)
+app.include_router(device_control_router.router)
