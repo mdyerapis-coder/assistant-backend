@@ -44,3 +44,11 @@ A phase isn't done until its `CONTEXT.md`'s human-check has actually been run an
 - Android app must call POST `/v1/device-tokens` with its FCM token on startup
 - Human check: create a reminder due 2 minutes out, confirm push notification lands on phone
 - Write `REPORT.md` in `phases/02.5_reminder-delivery/`
+
+## Agent skills
+
+This repo uses [mattpocock/skills](https://github.com/mattpocock/skills). See:
+
+- **Issue tracker**: `docs/agents/issue-tracker.md`
+- **Triage labels**: `docs/agents/triage-labels.md`
+- **Domain docs**: `docs/agents/domain.md`

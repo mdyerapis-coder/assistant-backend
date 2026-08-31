@@ -23,3 +23,6 @@ venv/
 service-account.json
 .firebaserc
 firebase.json
+
+# omp harness state
+.omo/
