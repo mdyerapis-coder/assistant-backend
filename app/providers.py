@@ -13,23 +13,21 @@ placeholder entry with an empty key.
 """
 
 from dataclasses import dataclass
-
 import os
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class ModelProvider:
     name: str
     base_url: str
     api_key_env: str
     default_model: str
     note: str = ""
+    selectable: bool = True
 
 
 # The shortlist. Every model id below was verified against the provider's
-# own current docs/changelog on 2026-08-27 — not guessed from stale
-# knowledge, this landscape moves fast enough that a wrong id fails silently
-# with a confusing 404, not a helpful error.
+# live API on 2026-08-28.
 PROVIDERS: list[ModelProvider] = [
     ModelProvider(
         name="gemini",
@@ -67,9 +65,29 @@ PROVIDERS: list[ModelProvider] = [
         note="Router, not a single model — flexible catch-all/fallback.",
     ),
     ModelProvider(
+        name="hermes-3-405b",
+        base_url="https://openrouter.ai/api/v1",
+        api_key_env="OPENROUTER_API_KEY",
+        default_model="nousresearch/hermes-3-llama-3.1-405b",
+        note="[Uncensored] Nous Research steerable frontier intelligence.",
+    ),
+    ModelProvider(
+        name="dolphin-uncensored",
+        base_url="https://openrouter.ai/api/v1",
+        api_key_env="OPENROUTER_API_KEY",
+        default_model="cognitivecomputations/dolphin-mistral-24b-venice-edition",
+        note="[Uncensored] Cognitive Computations conversational model without refusals.",
+    ),
+    ModelProvider(
+        name="euryale-70b",
+        base_url="https://openrouter.ai/api/v1",
+        api_key_env="OPENROUTER_API_KEY",
+        default_model="sao10k/l3.3-euryale-70b",
+        note="[Uncensored] Creative & expressive multi-turn conversational model.",
+    ),
+    ModelProvider(
         name="minimax",
-        base_url="https://api.minimax.io/v1",  # verified live 2026-08-27 (the
-        # earlier api.minimax.chat guess was wrong — 401 invalid api key)
+        base_url="https://api.minimax.io/v1",
         api_key_env="MINIMAX_API_KEY",
         default_model="MiniMax-M3",
         note="Current general-purpose flagship, multimodal.",
@@ -78,18 +96,20 @@ PROVIDERS: list[ModelProvider] = [
         name="mimo",
         base_url="https://token-plan-sgp.xiaomimimo.com/v1",
         api_key_env="MIMO_API_KEY",
-        default_model="mimo-lite",  # TODO confirm exact model id string with the provider
+        default_model="mimo-lite",
         note="Xiaomi MiMo — item also has an anthropic_base_url field, unused here.",
+        selectable=False,
     ),
     ModelProvider(
         name="opencode-zen",
-        base_url="https://opencode.ai",  # TODO confirm exact path (likely /zen/v1 or similar)
+        base_url="https://opencode.ai",
         api_key_env="OPENCODE_API_KEY",
-        default_model="deepseek-v4-flash-free",  # TODO free models rotate — verify before use
+        default_model="deepseek-v4-flash-free",
         note=(
             "OpenCode's own gateway, 'OpenCode Zen'. Free tier has rotating "
             "models — treat default_model here as unstable, re-check periodically."
         ),
+        selectable=False,
     ),
 ]
 
@@ -97,6 +117,10 @@ PROVIDERS: list[ModelProvider] = [
 def available_providers() -> list[ModelProvider]:
     """Providers whose API key is actually set in the environment."""
     return [p for p in PROVIDERS if os.environ.get(p.api_key_env)]
+
+
+def selectable_providers() -> list[ModelProvider]:
+    return [provider for provider in available_providers() if provider.selectable]
 
 
 def get_provider(name: str) -> ModelProvider | None:

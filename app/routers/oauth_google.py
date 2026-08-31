@@ -264,6 +264,9 @@ async def get_google_credentials() -> Credentials | None:
     access_token = _decrypt(row[0])
     refresh_token = _decrypt(row[1])
     expiry_dt = datetime.datetime.fromisoformat(row[2])
+    # Normalize naive timestamps (legacy; creds.expiry from google-auth is naive UTC)
+    if expiry_dt.tzinfo is None:
+        expiry_dt = expiry_dt.replace(tzinfo=datetime.timezone.utc)
     scope = row[3]
     now = datetime.datetime.now(datetime.timezone.utc)
 
@@ -283,7 +286,13 @@ async def get_google_credentials() -> Credentials | None:
         except Exception:
             logger.exception("Failed to refresh Google OAuth token")
             return None
-        new_expiry = creds.expiry.isoformat() if creds.expiry else _now_iso()
+        if creds.expiry is not None:
+            exp = creds.expiry
+            if exp.tzinfo is None:
+                exp = exp.replace(tzinfo=datetime.timezone.utc)
+            new_expiry = exp.isoformat()
+        else:
+            new_expiry = _now_iso()
         await conn.execute(
             "UPDATE google_oauth_tokens SET access_token_enc = ?, expiry = ?, updated_at = ? WHERE provider = ?",
             (_encrypt(creds.token), new_expiry, _now_iso(), "google"),
