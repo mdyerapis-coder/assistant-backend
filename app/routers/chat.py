@@ -6,7 +6,9 @@ docs/adr/008/009 for the memory/tool-registry design wired in here.
 
 import datetime
 import json
+import os
 import uuid
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import AsyncIterator, cast, TypedDict
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -41,6 +43,9 @@ class ChatRequest(BaseModel):
     conversation_id: str | None = None
     message: str
     model: str | None = None
+    # IANA zone from the caller (e.g. Australia/Brisbane); invalid/missing
+    # falls back to UTC — a bad tz must never fail the chat.
+    timezone: str | None = None
 
 
 class ModelOptionResponse(BaseModel):
@@ -50,6 +55,24 @@ class ModelOptionResponse(BaseModel):
     model: str
     provider: str
     description: str
+    display_name: str = ""
+    tags: list[str] = []
+
+
+class ProviderStatusResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    default_model: str
+    note: str
+    configured: bool
+    selectable: bool
+
+
+class ProvidersStatusResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    providers: list[ProviderStatusResponse]
 
 
 class ModelsResponse(BaseModel):
@@ -63,6 +86,10 @@ class ToolCallAccumulator(TypedDict):
     id: str | None
     name: str | None
     arguments: list[str]
+
+
+def _now() -> str:
+    return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 
 def _now() -> str:
@@ -131,11 +158,27 @@ async def _save_message(
     await conn.commit()
 
 
+def _timezone_notice(timezone_name: str | None) -> str:
+    zone: datetime.tzinfo = datetime.timezone.utc
+    label = "UTC"
+    if timezone_name:
+        try:
+            zone = ZoneInfo(timezone_name)
+            label = timezone_name
+        except (ZoneInfoNotFoundError, ValueError):
+            pass
+    now_local = datetime.datetime.now(zone)
+    stamp = now_local.strftime("%H:%M %A, %B ") + str(now_local.day)
+    return f" The user's local timezone is {label}; local time is now {stamp}."
+
+
 async def _run_turn(
-    conversation_id: str, runtime: openai_client.ModelRuntime
+    conversation_id: str,
+    runtime: openai_client.ModelRuntime,
+    user_timezone: str | None = None,
 ) -> AsyncIterator[str]:
     facts = await memory.get_all_facts()
-    system_prompt = SYSTEM_PROMPT_BASE + memory.render_facts_block(facts)
+    system_prompt = SYSTEM_PROMPT_BASE + memory.render_facts_block(facts) + _timezone_notice(user_timezone)
     pattern_notice = await patterns.pending_nudge_notice()
     if pattern_notice:
         system_prompt += "\n\n" + pattern_notice
@@ -299,7 +342,7 @@ async def chat(request: ChatRequest) -> StreamingResponse:
 
     async def event_stream() -> AsyncIterator[str]:
         try:
-            async for frame in _run_turn(conversation_id, runtime):
+            async for frame in _run_turn(conversation_id, runtime, request.timezone):
                 yield frame
         except Exception as exc:
             yield encode_event(
@@ -321,20 +364,70 @@ async def chat(request: ChatRequest) -> StreamingResponse:
 
 
 @router.get(
+    "/v1/providers",
+    dependencies=[Depends(require_bearer_token)],
+    response_model=ProvidersStatusResponse,
+)
+async def provider_statuses() -> ProvidersStatusResponse:
+    return ProvidersStatusResponse(
+        providers=[
+            ProviderStatusResponse(
+                name=p.name,
+                default_model=p.default_model,
+                note=p.note,
+                configured=bool(os.environ.get(p.api_key_env)),
+                selectable=p.selectable,
+            )
+            for p in providers.PROVIDERS
+        ]
+    )
+
+
+@router.get(
     "/v1/models",
     dependencies=[Depends(require_bearer_token)],
     response_model=ModelsResponse,
 )
 async def models() -> ModelsResponse:
+    import asyncio
+
+    selectable = providers.selectable_providers()
+    # Gather live-verified model lists in parallel (cached, 4s timeout each)
+    live_results = await asyncio.gather(
+        *(providers.all_models_for_provider(p) for p in selectable),
+        return_exceptions=True,
+    )
+
+    model_entries: list[ModelOptionResponse] = []
+    for provider, result in zip(selectable, live_results):
+        if isinstance(result, Exception) or not isinstance(result, list):
+            model_ids = [provider.default_model]
+        else:
+            model_ids = result  # already live-verified or fallback
+        for mid in model_ids:
+            # Use qualified id when provider exposes multiple models so the
+            # exact choice round-trips through resolve_model.
+            qualified = f"{provider.name}:{mid}" if len(model_ids) > 1 else provider.name
+            # For the single-model (legacy) case, keep id as provider name
+            # for backwards compat; qualified only when ambiguous.
+            entry_id = qualified if len(model_ids) > 1 else provider.name
+            # Default model keeps the curated name; other live variants derive one.
+            if mid == provider.default_model and provider.display_name:
+                display = provider.display_name
+            else:
+                display = providers.prettify_model_id(mid)
+            model_entries.append(
+                ModelOptionResponse(
+                    id=entry_id,
+                    model=mid,
+                    provider=provider.name,
+                    description=provider.note,
+                    display_name=display,
+                    tags=list(provider.tags),
+                )
+            )
+
     return ModelsResponse(
         default_model_id=openai_client.default_model_id(),
-        models=[
-            ModelOptionResponse(
-                id=provider.name,
-                model=provider.default_model,
-                provider=provider.name,
-                description=provider.note,
-            )
-            for provider in providers.selectable_providers()
-        ],
+        models=model_entries,
     )

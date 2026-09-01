@@ -154,3 +154,52 @@ def test_chat_executes_tool_call_and_continues(monkeypatch):
 
         facts = client.portal.call(memory.get_all_facts)
         assert facts == {"name": "Mason"}
+def _capture_create(monkeypatch):
+    """Stub the LLM call and capture the outbound completion kwargs."""
+    captured: dict = {}
+
+    async def fake_create(**kwargs):
+        captured.update(kwargs)
+        return FakeStream([FakeChunk(FakeDelta(content="ok"), finish_reason="stop")])
+
+    monkeypatch.setattr(openai_client.client.chat.completions, "create", fake_create)
+    return captured
+
+
+def test_chat_timezone_reaches_system_prompt(monkeypatch):
+    captured = _capture_create(monkeypatch)
+
+    with TestClient(app) as client:
+        resp = client.post(
+            "/v1/chat",
+            headers=HEADERS,
+            json={"message": "what time is it", "timezone": "Australia/Brisbane"},
+        )
+        assert resp.status_code == 200
+
+    system = captured["messages"][0]["content"]
+    assert "Australia/Brisbane" in system
+
+
+def test_chat_without_timezone_defaults_to_utc(monkeypatch):
+    captured = _capture_create(monkeypatch)
+
+    with TestClient(app) as client:
+        resp = client.post("/v1/chat", headers=HEADERS, json={"message": "hi"})
+        assert resp.status_code == 200
+
+    assert "UTC" in captured["messages"][0]["content"]
+
+
+def test_chat_invalid_timezone_falls_back_to_utc(monkeypatch):
+    captured = _capture_create(monkeypatch)
+
+    with TestClient(app) as client:
+        resp = client.post(
+            "/v1/chat",
+            headers=HEADERS,
+            json={"message": "hi", "timezone": "Mars/Olympus"},
+        )
+        assert resp.status_code == 200
+
+    assert "UTC" in captured["messages"][0]["content"]
