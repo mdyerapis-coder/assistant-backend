@@ -17,6 +17,8 @@ One decision per file, numbered in creation order. Read before undoing any of th
 | 009 | Flat append-only tool registry + progressive disclosure for anything non-core |
 | 010 | No vector DB in v1 |
 | 011 | Bitwarden secret sync — `sync_secrets_from_bitwarden.sh` writes `assistant.env`, restart-on-change pull |
+| 012 | Embedding this backend inside the Android APK — analysis of what it would take |
+| 013 | Embed path OAuth + push — O1 thin OAuth relay, P1 WorkManager+local notifications, P2 in-process SMS |
 
 ## CONVENTIONS
 - Each ADR is short (5-7 lines): status/phase line, the decision, one paragraph of why. Don't

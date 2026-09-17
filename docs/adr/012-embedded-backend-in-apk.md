@@ -97,7 +97,9 @@ mid-range hardware.
    consumed by the unmodified `ChatApiClient`. A day.
 3. Decide the OAuth and push questions *on paper* before writing any more
    code — they are the two places where "embed" stops being a packaging
-   exercise and becomes a redesign.
+   exercise and becomes a redesign. OAuth+push paper decisions are accepted
+   in ADR-013 (O1 thin OAuth relay, P1 WorkManager+local notifications,
+   P2 in-process SMS).
 4. Only then: feature-parity port of scheduler/notifications, key storage,
    and a per-install token.
 
