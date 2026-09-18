@@ -146,10 +146,10 @@ curl -sS -H "Authorization: Bearer $ASSISTANT_BEARER_TOKEN" \
 curl -sS -o /dev/null -w '%{http_code}\n' "$RELAY/oauth/google/status"
 # expect 401
 
-# 4. Custom Tab start URL must redirect (302) to accounts.google.com
+# 4. Custom Tab start URL must redirect (307/302) to accounts.google.com
 #    (503 = GOOGLE_CLIENT_SECRET_JSON missing on this host)
 curl -sS -o /dev/null -w '%{http_code}\n' "$RELAY/oauth/google/start"
-# expect 302
+# expect 307 (Starlette RedirectResponse default) or 302
 ```
 
 Or: `ASSISTANT_BEARER_TOKEN=... ./scripts/verify_oauth_relay.sh`

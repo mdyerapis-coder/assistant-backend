@@ -9,6 +9,7 @@
 # Exit 0 if health + oauth status (authed) succeed. Start-URL / unauth checks
 # are reported but a missing Google client JSON (503 on /start) is a warning,
 # not a hard fail — the process can be up before GCP is wired.
+# Live uvicorn/Starlette RedirectResponse is 307 (not 302).
 
 set -euo pipefail
 
@@ -54,8 +55,8 @@ echo "    body: $(tr -d '\n' <"$BODY")"
 check "GET /oauth/google/status (no bearer)" 401 "${RELAY_URL}/oauth/google/status"
 
 START_CODE="$(curl -sS -o /dev/null -w '%{http_code}' -m 15 "${RELAY_URL}/oauth/google/start" || true)"
-if [[ "$START_CODE" == "302" ]]; then
-  echo "ok  GET /oauth/google/start  http 302 (redirect to Google)"
+if [[ "$START_CODE" == "307" || "$START_CODE" == "302" || "$START_CODE" == "303" ]]; then
+  echo "ok  GET /oauth/google/start  http $START_CODE (redirect to Google)"
 elif [[ "$START_CODE" == "503" ]]; then
   echo "WARN GET /oauth/google/start  http 503 — GOOGLE_CLIENT_SECRET_JSON missing on this host"
   WARN=1
