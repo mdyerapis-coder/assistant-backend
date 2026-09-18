@@ -27,16 +27,27 @@ GOOGLE_CLIENT_SECRET_JSON = os.environ.get("GOOGLE_CLIENT_SECRET_JSON", "")
 
 DB_PATH = os.environ.get("ASSISTANT_DB_PATH", "assistant.db")
 
-# --- Phase 03: Google OAuth (Calendar + Gmail) ---
+# --- Phase 03 / O1: Google OAuth relay (Calendar + Gmail) ---
+# Operator guide: docs/oauth-relay.md
+# This host (assistant.llmclouds.au) keeps client_secret, token encryption,
+# refresh, and Google tool execution. None of these env vars belong in the APK.
 
-# The public URL the phone reaches the backend at. Defaults to the
-# production URL so the OAuth redirect_uri works out of the box. A
-# Bitwarden sync that doesn't carry ASSISTANT_PUBLIC_URL won't break the
-# OAuth flow. Override via env var for local dev.
-PUBLIC_BASE_URL = os.environ.get("ASSISTANT_PUBLIC_URL", "https://assistant.llmclouds.au")
-GOOGLE_OAUTH_REDIRECT_URI = os.environ.get(
-    "GOOGLE_OAUTH_REDIRECT_URI",
-    f"{PUBLIC_BASE_URL}/oauth/google/callback",
+# The public URL the phone reaches the OAuth relay at. Defaults to the
+# production URL so the OAuth redirect_uri works out of the box. Empty
+# string is treated as unset (Bitwarden passthrough must not blank this
+# into a broken redirect). Override via env var for local dev.
+PUBLIC_BASE_URL = os.environ.get("ASSISTANT_PUBLIC_URL") or "https://assistant.llmclouds.au"
+GOOGLE_OAUTH_REDIRECT_URI = (
+    os.environ.get("GOOGLE_OAUTH_REDIRECT_URI")
+    or f"{PUBLIC_BASE_URL}/oauth/google/callback"
+)
+
+# Deep link after /oauth/google/callback. Must match the live APK intent-filter
+# (assistant-android: sableapp://oauth-complete). Historical alias this
+# backend used to emit: assistantapp://oauth-complete — not registered on
+# the current Sable APK.
+GOOGLE_OAUTH_DEEPLINK = (
+    os.environ.get("GOOGLE_OAUTH_DEEPLINK") or "sableapp://oauth-complete"
 )
 
 
@@ -44,12 +55,14 @@ def get_google_token_encryption_key() -> str:
     """Read the Fernet key for OAuth token encryption at rest.
 
     Order of precedence:
-    1. GOOGLE_TOKEN_ENCRYPTION_KEY env var (fast, but Bitwarden sync may strip)
+    1. GOOGLE_TOKEN_ENCRYPTION_KEY env var (also passthrough in Bitwarden
+       sync when already set — see OAUTH_RELAY_PASSTHROUGH_KEYS)
     2. /opt/assistant-backend/.google-token-key (file on the VPS that the
        sync script doesn't touch — survives Bitwarden rewrites)
 
     Without one of these, OAuth tokens can't be stored. Generate with:
         python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    Operator notes: docs/oauth-relay.md — this key must never ship in the APK.
     """
     env_key = os.environ.get("GOOGLE_TOKEN_ENCRYPTION_KEY", "")
     if env_key:

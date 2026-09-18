@@ -2,6 +2,10 @@
 # pre-existing tinyhumans.llmclouds.au block (unrelated, different project).
 # Needs a DNS A record (assistant.llmclouds.au -> 103.108.228.3) before Caddy
 # can obtain a cert — added manually via the registrar, not automatable from here.
+#
+# This site is the O1 Google OAuth relay (docs/oauth-relay.md): Custom Tab
+# start, /oauth/google/callback (must match the GCP authorized redirect URI),
+# token store, and (today) /v1/chat for Calendar/Gmail tool execution.
 
 assistant.llmclouds.au {
 	reverse_proxy localhost:8090

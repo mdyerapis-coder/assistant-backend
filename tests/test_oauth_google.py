@@ -77,7 +77,6 @@ async def test_decrypt_garbage_raises():
 
 @pytest.mark.asyncio
 async def test_status_not_connected():
-    import httpx
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
@@ -91,6 +90,37 @@ async def test_status_not_connected():
     )
     assert resp.status_code == 200
     assert resp.json() == {"connected": False}
+
+
+def test_default_deeplink_matches_live_android_apk():
+    from app import config
+
+    assert oauth_google.DEFAULT_OAUTH_COMPLETE_DEEPLINK == "sableapp://oauth-complete"
+    assert config.GOOGLE_OAUTH_DEEPLINK == "sableapp://oauth-complete"
+    # Historical alias — documented, not the live APK filter.
+    assert oauth_google.DEFAULT_OAUTH_COMPLETE_DEEPLINK != "assistantapp://oauth-complete"
+
+
+def test_status_requires_bearer():
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    app = FastAPI()
+    app.include_router(oauth_google.router)
+    client = TestClient(app)
+    resp = client.get("/oauth/google/status")
+    assert resp.status_code == 401
+
+
+def test_oauth_start_without_client_secret_is_503():
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    app = FastAPI()
+    app.include_router(oauth_google.router)
+    client = TestClient(app, follow_redirects=False)
+    resp = client.get("/oauth/google/start")
+    assert resp.status_code == 503
 
 
 # --- Calendar tool when not connected ---
