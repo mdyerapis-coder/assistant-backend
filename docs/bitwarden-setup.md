@@ -47,6 +47,8 @@ chmod 600 /root/.bw-master-password.cred
 
 `scripts/bitwarden_items.py` is the source of truth for which env vars sync — currently 8 model-provider keys (Gemini, Mistral, GROQ, DeepSeek, OpenRouter, MiniMax, MiMo, OpenCode Zen), already pointed at existing items in your "API Keys" folder. The Cline gateway key (`OPENAI_API_KEY`) and the Google client secret aren't in Bitwarden yet, so the sync script leaves both untouched on every run — no action needed unless you want those to auto-rotate too, in which case: create a Bitwarden item, add its id to `bitwarden_items.py`.
 
+Google OAuth confidential material (`GOOGLE_CLIENT_SECRET_JSON`, `GOOGLE_TOKEN_ENCRYPTION_KEY`) stays on this VPS and **must never go in the APK**. See [docs/oauth-relay.md](oauth-relay.md). The Fernet key is safer as `/opt/assistant-backend/.google-token-key` than as an env var the rewrite might drop; the sync script now passthrough-copies OAuth relay keys *only if they already exist* in `assistant.env`.
+
 ## 6. Test it once, then enable the timer
 
 ```

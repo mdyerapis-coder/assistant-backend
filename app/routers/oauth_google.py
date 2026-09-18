@@ -1,9 +1,11 @@
 """Google OAuth 2.0 auth-code flow — backend-anchored confidential client.
 
-See docs/adr/007-google-oauth-backend-anchored.md. The phone never holds
-the OAuth secret; it just opens a Custom Tab at GET /oauth/google/start
-and gets deep-linked back via assistantapp://oauth-complete once the
-backend finishes the exchange and stores the tokens.
+See docs/adr/007-google-oauth-backend-anchored.md and docs/oauth-relay.md.
+The phone never holds the OAuth secret; it opens a Custom Tab at
+GET /oauth/google/start and is deep-linked back via
+sableapp://oauth-complete (live assistant-android; override with
+GOOGLE_OAUTH_DEEPLINK) once this host finishes the exchange and stores
+the tokens. client_secret and GOOGLE_TOKEN_ENCRYPTION_KEY stay here.
 
 Endpoints:
 - GET /oauth/google/start — generates CSRF state, redirects to Google
@@ -42,8 +44,11 @@ GOOGLE_SCOPES = [
 ]
 
 STATE_TTL_SECONDS = 600  # 10 minutes
-DEEPLINK_SCHEME = "assistantapp"
+# Defaults aligned with assistant-android (package com.mdyerapis.sable).
+# Historical alias this file used to emit: assistantapp://oauth-complete.
+DEEPLINK_SCHEME = "sableapp"
 DEEPLINK_HOST = "oauth-complete"
+DEFAULT_OAUTH_COMPLETE_DEEPLINK = f"{DEEPLINK_SCHEME}://{DEEPLINK_HOST}"
 
 
 def _now_iso() -> str:
@@ -207,8 +212,7 @@ async def oauth_google_callback(
     )
     await conn.commit()
 
-    deep_link = f"{DEEPLINK_SCHEME}://{DEEPLINK_HOST}"
-    return RedirectResponse(deep_link)
+    return RedirectResponse(config.GOOGLE_OAUTH_DEEPLINK)
 
 
 @router.get("/oauth/google/status", dependencies=[Depends(require_bearer_token)])

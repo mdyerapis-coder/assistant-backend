@@ -1,6 +1,6 @@
 # Wire contract — the only file the Android repo needs
 
-**Owning sources:** `app/sse.py` (SSE frames), `app/routers/chat.py` (chat + `/v1/models`), `app/routers/threads.py` + `app/routers/memory.py` (thread history + memory inspection, phase 05). If this doc and those files ever disagree, that's a bug — fix them together, same commit. Android's half of this contract lives at `backend-client/.../SseFrameCodec.kt` and `backend-client/.../ThreadsApi.kt` in the `assistant-android` repo; keep both sides in sync by hand until an automated schema check exists.
+**Owning sources:** `app/sse.py` (SSE frames), `app/routers/chat.py` (chat + `/v1/models`), `app/routers/threads.py` + `app/routers/memory.py` (thread history + memory inspection, phase 05), `app/routers/oauth_google.py` (O1 relay URLs + deep link). If this doc and those files ever disagree, that's a bug — fix them together, same commit. Android's half of this contract lives at `backend-client/.../SseFrameCodec.kt` and `backend-client/.../ThreadsApi.kt` in the `assistant-android` repo; keep both sides in sync by hand until an automated schema check exists. Operator checklist for the VPS: [docs/oauth-relay.md](oauth-relay.md).
 
 ## Transport
 
@@ -172,3 +172,27 @@ Automations are hidden behind `use_skill("automations")` (progressive disclosure
 ### Scheduler firing
 
 The background scheduler (app/scheduler.py) polls every 30s for due automations using `croniter`. When due, it executes the automation's action (via the tool registry) and FCM-pushes the result to all registered device tokens. After firing, the automation is disabled to avoid repeated triggers.
+
+## OAuth relay (O1 / Option C hybrid)
+
+Chat may run on-device. Google stays on this host. Android keeps two independent base URLs:
+
+| Client setting | Default | Used for |
+|---|---|---|
+| `oauthRelayUrl` | `https://assistant.llmclouds.au` | Custom Tab, OAuth status/disconnect, Calendar/Gmail turns |
+| `chatBaseUrl` | cloud FastAPI, or unused on-device | Ordinary `POST /v1/chat` when Cloud Assistant is selected |
+
+Custom Tab start URL: `{oauthRelayUrl}/oauth/google/start` (never a WebView).
+
+Deep link this backend emits after `/oauth/google/callback`: **`sableapp://oauth-complete`**. Live `assistant-android` registers that scheme only. Historical alias `assistantapp://oauth-complete` is not on the current APK; override with env `GOOGLE_OAUTH_DEEPLINK` only for a pre-rename build.
+
+| Method | Path | Auth | Role |
+|---|---|---|---|
+| GET | `/oauth/google/start` | none | Redirect to Google consent |
+| GET | `/oauth/google/callback` | none | Code exchange; then deep-link to the app |
+| GET | `/oauth/google/status` | bearer | `{connected, expiry?, scope?, updated_at?}` |
+| DELETE | `/oauth/google` | bearer | Drop stored tokens |
+| POST | `/v1/chat` | bearer | Option C Google turns reuse this (existing calendar/gmail tools). Do not send `local:` conversation ids or on-device model ids. |
+| GET | `/v1/health` | bearer | Token/host liveness |
+
+`client_secret`, `GOOGLE_TOKEN_ENCRYPTION_KEY`, and Google refresh tokens stay on the relay. They are never in the APK. Full operator notes (GCP redirect URI, secrets, strip-later list): [docs/oauth-relay.md](oauth-relay.md).

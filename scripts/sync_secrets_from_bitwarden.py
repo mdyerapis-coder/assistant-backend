@@ -11,6 +11,11 @@ covers (ASSISTANT_BEARER_TOKEN, the Cline OPENAI_API_KEY/OPENAI_BASE_URL,
 GOOGLE_CLIENT_SECRET_JSON, ASSISTANT_DB_PATH) are read from the existing
 env file and carried through unchanged — this script only ever touches the
 keys it has a Bitwarden item id for.
+
+O1 relay keys (ASSISTANT_PUBLIC_URL, GOOGLE_OAUTH_*, GOOGLE_TOKEN_ENCRYPTION_KEY)
+are also passthrough, but only when already present — never written empty, so
+a rewrite cannot blank the production OAuth redirect. See docs/oauth-relay.md.
+None of the Google confidential material belongs in the APK.
 """
 
 from __future__ import annotations
@@ -40,6 +45,16 @@ PASSTHROUGH_KEYS = [
     "OPENAI_BASE_URL",
     "GOOGLE_CLIENT_SECRET_JSON",
     "ASSISTANT_DB_PATH",
+]
+
+# O1 relay keys (docs/oauth-relay.md). Only copied if already present so we
+# never write `ASSISTANT_PUBLIC_URL=` (empty) and override config.py's
+# production default into a broken Google redirect_uri.
+OAUTH_RELAY_PASSTHROUGH_KEYS = [
+    "ASSISTANT_PUBLIC_URL",
+    "GOOGLE_OAUTH_REDIRECT_URI",
+    "GOOGLE_OAUTH_DEEPLINK",
+    "GOOGLE_TOKEN_ENCRYPTION_KEY",
 ]
 
 
@@ -88,6 +103,9 @@ def main() -> int:
     existing = parse_existing_env(args.env_file)
 
     lines = [f"{key}={existing.get(key, '')}" for key in PASSTHROUGH_KEYS]
+    for key in OAUTH_RELAY_PASSTHROUGH_KEYS:
+        if key in existing:
+            lines.append(f"{key}={existing[key]}")
 
     for env_key, item_id in API_KEY_ITEM_IDS.items():
         value = get_item_value(item_id, args.session)
